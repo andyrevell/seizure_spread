@@ -39,7 +39,7 @@ def overlapping_windows(train_x, output_length):
 
 
 def iEEG_data_get(file_ID, start, duration):
-	s = ieeg.auth.Session('arevell', 'Zoro11!!')
+	s = ieeg.auth.Session('arevell', 'password')
 	ds = s.open_dataset(file_ID)
 	channels = list(range(len(ds.ch_labels)))
 	data = ds.get_data(start,duration, channels)

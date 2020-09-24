@@ -1,0 +1,526 @@
+"""
+2020.09.18
+Andy Revell
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Purpose: 
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Logic of code:
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Input:
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Output:
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Example:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+"""
+
+
+#%%
+path = "/home/arevell/papers/paper002" 
+import sys
+import os
+import pickle
+import pandas as pd
+import numpy as np
+import copy
+from sklearn.model_selection import train_test_split
+from os.path import join as ospj
+sys.path.append(ospj(path, "seizure_spread/tools"))
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.preprocessing import RobustScaler #MinMaxScaler
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Flatten, Conv1D, MaxPooling1D, Dropout
+
+
+physical_devices = tf.config.list_physical_devices('GPU')
+#tf.config.experimental.set_virtual_device_configuration(physical_devices[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=24217)])
+tf.config.experimental.set_memory_growth(physical_devices[0], True)
+
+
+#% Input/Output Paths and File names
+ifname_EEG_times = ospj(path,"data/raw/iEEG_times/EEG_times.xlsx")
+ifname_spread = ospj(path,"data/raw/iEEG_times/seizure_spread_annotations.xlsx")
+ofpath_downsampled = ospj(path,"data/processed/eeg_downsampled")
+
+
+#% Load Study Meta Data
+data_EEG_times = pd.read_excel(ifname_EEG_times)    
+data_spread = pd.read_excel(ifname_spread)    
+
+#% Initializing Data Structure
+unique_IDs = np.unique(data_spread["RID"])
+
+#Data Structure:
+#create empty list of size = number of patients. 
+#List structure: [patient 1 , patient 2, patient 3,...] ---> 
+#patient 1 = [interictal, periseizure] ---> 
+#interictal = [interictal 1, interictal 2,...]
+#periseizure = [periseizure 1, periseizure 2,...] # Periseizure includes preictal, ictal, and postictal, but NOT interictal. This is because pre,ictal, and postictal and all continuous with eachother
+L = [None] * len(unique_IDs)
+for i in range(len(L)):
+    L[i] = [None] * 2
+    for j in range(len(L[i] )):
+        L[i][j] = [None] *0
+
+
+#% Read in downsampled data
+
+#assumes order of files in EEG_times.xlsx follows: interictal, preictal, ictal, postictal
+for i in range(len(data_EEG_times)):
+    #parsing data DataFrame to get iEEG information
+    sub_ID = data_EEG_times.iloc[i].RID
+    iEEG_filename = data_EEG_times.iloc[i].file
+    ignore_electrodes = data_EEG_times.iloc[i].ignore_electrodes.split(",")
+    start_time_usec = int(data_EEG_times.iloc[i].connectivity_start_time_seconds*1e6)
+    stop_time_usec = int(data_EEG_times.iloc[i].connectivity_end_time_seconds*1e6)
+    descriptor = data_EEG_times.iloc[i].descriptor
+    ifpath_sub_ID = ospj(ofpath_downsampled, "sub-{0}".format(sub_ID))
+    ifname_downsampled = "{0}/sub-{1}_{2}_{3}_{4}_EEG_avgRef_filtered_downsampled.pickle".format(ifpath_sub_ID, sub_ID, iEEG_filename, start_time_usec, stop_time_usec)
+    if not (os.path.exists(ifname_downsampled)):
+        print("EEG File does not exist: {0}".format(ifname_downsampled))
+    else:
+        #Output filename EEG
+        with open(ifname_downsampled, 'rb') as f: data, fs = pickle.load(f)
+        if descriptor == "interictal":
+            class_seizure = np.repeat(0, len(data)) #0 = interictal, 1 = preictal, 2 = ictal, 3 = postictal
+            #class_status = np.repeat(0, len(data)) #0 = definitely not seizing, 1 = definitely seizing
+            #class_spread = np.repeat(0, len(data)) #0 = not seizing, 1 = seizing #used from clinical marking from rater's interpretation of where the seizure might begin. Highly biased
+            data.insert(0, "class_seizure", class_seizure)
+            #data.insert(1, "class_status", class_status)
+            #data.insert(2, "class_spread", class_spread)
+            position_ictal = 0
+            position_subID = np.where(unique_IDs == sub_ID)[0][0] 
+            L[position_subID][position_ictal].append(data)
+        if descriptor == "preictal":
+            class_seizure = np.repeat(1, len(data)) #0 = interictal, 1 = preictal, 2 = ictal, 3 = postictal
+            #class_status = np.repeat(2, len(data)) #0 = definitely not seizing, 1 = definitely seizing, 2 = unknown
+            #class_spread = np.repeat(2, len(data)) #0 = not seizing, 1 = seizing, 2 = unknown #used from clinical marking from rater's interpretation of where the seizure might begin. Highly biased
+            data.insert(0, "class_seizure", class_seizure)
+            #data.insert(1, "class_status", class_status)
+            #data.insert(2, "class_spread", class_spread)
+            data_preictal = copy.deepcopy(data)
+        if descriptor == "ictal":
+            class_seizure = np.repeat(2, len(data)) #0 = interictal, 1 = preictal, 2 = ictal, 3 = postictal
+            #class_status = np.repeat(2, len(data)) #0 = definitely not seizing, 1 = definitely seizing, 2 = unknown
+            #class_spread = np.repeat(2, len(data)) #0 = not seizing, 1 = seizing, 2 = unknown #used from clinical marking from rater's interpretation of where the seizure might begin. Highly biased
+            data.insert(0, "class_seizure", class_seizure)
+            #data.insert(1, "class_status", class_status)
+            #data.insert(2, "class_spread", class_spread)
+            data_ictal = copy.deepcopy(data)
+        if descriptor == "postictal":
+            class_seizure = np.repeat(3, len(data)) #0 = interictal, 1 = preictal, 2 = ictal, 3 = postictal
+            #class_status = np.repeat(2, len(data)) #0 = definitely not seizing, 1 = definitely seizing, 2 = unknown
+            #class_spread = np.repeat(2, len(data)) #0 = not seizing, 1 = seizing, 2 = unknown #used from clinical marking from rater's interpretation of where the seizure might begin. Highly biased
+            data.insert(0, "class_seizure", class_seizure)
+            #data.insert(1, "class_status", class_status)
+            #data.insert(2, "class_spread", class_spread)
+            data_postictal = copy.deepcopy(data)
+            data_periseizure = pd.concat([data_preictal, data_ictal, data_postictal])
+            position_ictal = 1
+            position_subID = np.where(unique_IDs == sub_ID)[0][0] 
+            L[position_subID][position_ictal].append(data_periseizure)
+        
+                            
+"""
+#plotting
+import matplotlib.pyplot as plt
+
+pt = 0
+ictal = 1
+sz_num = 1
+elec = 3
+start = 15000
+time=np.arange(start,start+5120,1)
+tmp = np.array(L[pt][ictal][sz_num])[time, :]
+tmp = tmp[:,elec]
+
+plt.plot(time, tmp)
+
+"""
+
+
+#%
+# Fill in seizure spread data. interictal, 1 = preictal, 2 = ictal, 3 = postictal
+
+class_Status = copy.deepcopy(L)
+Spread = copy.deepcopy(L)
+
+for i in range(len(class_Status)): #i = patient 
+    for j in range(len(class_Status[i])): #j = either interictal or periseizure
+        for k in range(len(class_Status[i][j])): #k = which seizure number
+            for col in class_Status[i][j][k].columns[range(1, len(class_Status[i][j][k].columns))]:
+                #replacing inital spread data with value = 2. 0 = definitely not seizing, 1 = definitely seizing, 2 = unknown
+                if class_Status[i][j][k]["class_seizure"].iloc[0] == 0: #if interictal, then we know we are definitely in non-seizing class. Else, we don't know. 0 = definitely not seizing, 1 = definitely seizing, 2 = unknown
+                    value = 0
+                else:
+                    value = 2 #0 = definitely not seizing, 1 = definitely seizing, 2 = unknown
+                class_Status[i][j][k][col].values[:] = value
+                
+            for l in range(1, len(class_Status[i][j][k].columns)): # l = the electrode number
+                electrode =  class_Status[i][j][k].iloc[:,l]
+                #setting all Status values to 2. #0 = definitely not seizing, 1 = definitely seizing, 2 = unknown
+                electrode_name = electrode.name
+                sub_ID = unique_IDs[i]
+
+                if any((data_spread["RID"] ==sub_ID) & (data_spread["electrode"] == electrode_name)): #check to make sure there is an electrode with same name and patient in the seizure spread annotations
+                    loc = np.where((data_spread["RID"] ==sub_ID) & (data_spread["electrode"] == electrode_name))
+                    spread = data_spread.iloc[loc]
+                    if not type(np.array(spread["start"])[0]) == str: #check to make sure the spread times are real numbers
+                        if not type(np.array(spread["stop"])[0]) == str:
+                            start = int(spread["start"])
+                            stop = int(spread["stop"])
+                            index = np.array(electrode.index)
+                            spread_locs = np.where((index >=start) & (index <=stop))
+                            if spread_locs:#Check if array is empty. check to make sure there are corresponding seizure spread times of this electrode (not all seizures has spread annotations). 
+                            #If the empty, then this electrode either has no annotations for this seizure, or this is interictal, preictal, or postictal time periods
+                                for m in spread_locs:
+                                    class_Status[i][j][k][electrode_name].iloc[m] =1
+                                
+#ignore warning "A value is trying to be set on a copy of a slice from a DataFrame"
+
+#%Normalizing data
+
+
+
+L_norm = copy.deepcopy(L)
+
+for i in range(len(class_Status)): #i = patient 
+    for j in range(len(class_Status[i])): #j = either interictal or periseizure
+        for k in range(len(class_Status[i][j])): #k = which seizure number
+            for l in range(1, len(class_Status[i][j][k].columns)): # l = the electrode number
+               array = np.array(L_norm[i][j][k].iloc[:,l])
+               sc = RobustScaler()
+               L_norm[i][j][k].iloc[:,l] = sc.fit_transform(array.reshape(-1, 1))
+
+
+
+#%
+
+
+
+
+
+def overlapping_windows(arr, time_step, skip):
+	# flatten data
+	X = list()
+	start = 0
+	# step over the entire history one time step at a time
+	for ii in range(len(arr)):
+		# define the end of the input sequence
+		end = start + time_step
+		# ensure we have enough data for this instance
+		if end <= len(arr):
+			X.append(arr[start:end,:])
+		# move along one time step
+		start = start + int(skip)
+	return np.array(X)
+
+
+#%
+#TRAIN
+
+
+#Getting ictal
+patient = 0
+interictal = 0
+periseizure = 1
+seizure_num = 2
+
+arr_X = np.delete(np.array(L_norm[patient][periseizure][seizure_num]),0, axis=1)
+arr_Y = np.delete(np.array(class_Status[patient][periseizure][seizure_num]),0, axis=1)
+
+time_step = 1024
+skip = 10
+X = overlapping_windows(arr_X, time_step, skip)
+Y = overlapping_windows(arr_Y, time_step, skip)
+Y = np.delete(Y,[range(time_step-1)], axis=1)#the last of the datapoint of Y is the class
+
+#Reshaping
+n_features = 1
+X = X.reshape(X.shape[0]* X.shape[2],X.shape[1], n_features)
+Y = Y.reshape(Y.shape[0]* Y.shape[2],Y.shape[1])
+
+
+#Keeping only class 0 and 1
+index = np.where(  (Y[:,0] == 0) | (Y[:,0] == 1) )
+X = X[index,:,:][0]
+Y = Y[index,:][0]
+
+X_train = copy.deepcopy(X)
+Y_train = copy.deepcopy(Y)
+
+####Getting interictal
+
+arr_X = np.delete(np.array(L_norm[patient][interictal][seizure_num]),0, axis=1)
+arr_Y = np.delete(np.array(class_Status[patient][interictal][seizure_num]),0, axis=1)
+
+X = overlapping_windows(arr_X, time_step, skip)
+Y = overlapping_windows(arr_Y, time_step, skip)
+Y = np.delete(Y,[range(time_step-1)], axis=1)#the last of the datapoint of Y is the class
+
+#Reshaping
+n_features = 1
+X = X.reshape(X.shape[0]* X.shape[2],X.shape[1], n_features)
+Y = Y.reshape(Y.shape[0]* Y.shape[2],Y.shape[1])
+
+
+#Keeping only class 0 and 1
+index = np.where(  (Y[:,0] == 0) | (Y[:,0] == 1) )
+X = X[index,:,:][0]
+Y = Y[index,:][0]
+
+
+X_train = np.concatenate((X_train, X))
+Y_train = np.concatenate((Y_train, Y))
+
+
+
+
+
+
+
+
+
+
+
+
+
+input_shape = (time_step,  n_features)
+
+
+tmp = copy.deepcopy(X)
+sys.getsizeof(tmp)/1e9
+tmp = copy.deepcopy(Y)
+sys.getsizeof(tmp)/1e9
+
+#%
+#Test
+
+#Getting ictal
+patient = 1
+interictal = 0
+periseizure = 1
+seizure_num = 0
+
+arr_X = np.delete(np.array(L_norm[patient][periseizure][seizure_num]),0, axis=1)
+arr_Y = np.delete(np.array(class_Status[patient][periseizure][seizure_num]),0, axis=1)
+
+
+X = overlapping_windows(arr_X, time_step, skip)
+Y = overlapping_windows(arr_Y, time_step, skip)
+Y = np.delete(Y,[range(time_step-1)], axis=1)#the last of the datapoint of Y is the class
+
+#Reshaping
+n_features = 1
+X = X.reshape(X.shape[0]* X.shape[2],X.shape[1], n_features)
+Y = Y.reshape(Y.shape[0]* Y.shape[2],Y.shape[1])
+
+
+#Keeping only class 0 and 1
+index = np.where(  (Y[:,0] == 0) | (Y[:,0] == 1) )
+X = X[index,:,:][0]
+Y = Y[index,:][0]
+
+X_test = copy.deepcopy(X)
+Y_test = copy.deepcopy(Y)
+
+####Getting interictal
+
+arr_X = np.delete(np.array(L_norm[patient][interictal][seizure_num]),0, axis=1)
+arr_Y = np.delete(np.array(class_Status[patient][interictal][seizure_num]),0, axis=1)
+
+
+X = overlapping_windows(arr_X, time_step, skip)
+Y = overlapping_windows(arr_Y, time_step, skip)
+Y = np.delete(Y,[range(time_step-1)], axis=1)#the last of the datapoint of Y is the class
+
+#Reshaping
+n_features = 1
+X = X.reshape(X.shape[0]* X.shape[2],X.shape[1], n_features)
+Y = Y.reshape(Y.shape[0]* Y.shape[2],Y.shape[1])
+
+
+#Keeping only class 0 and 1
+index = np.where(  (Y[:,0] == 0) | (Y[:,0] == 1) )
+X = X[index,:,:][0]
+Y = Y[index,:][0]
+
+
+X_test = np.concatenate((X_test, X))
+Y_test = np.concatenate((Y_test, Y))
+
+
+
+#%Suffle
+index = np.random.permutation(X_train.shape[0])
+
+X_train = X_train[index,:,:]
+Y_train = Y_train[index,:]
+
+index = np.random.permutation(X_test.shape[0])
+X_test = X_test[index,:,:]
+Y_test = Y_test[index,:]
+
+#%%
+
+
+
+#%%
+
+verbose = 1
+training_epochs = 10
+batch_size = 2**12
+optimizer_n = 'adam'
+embed_dim = 128
+learn_rate = 0.01
+beta_1 = 0.9
+beta_2=0.999
+amsgrad=False
+dropout=0.5
+
+def build_model():
+	#CNN model
+    rate = 2
+    #rate_exp_add = 2
+    optimizer = tf.keras.optimizers.Adam(learning_rate=learn_rate, beta_1=beta_1, beta_2=beta_2)
+    model = Sequential()
+    
+    model.add(Conv1D(filters=128, kernel_size=16,data_format="channels_last", activation='relu', dilation_rate = 2**rate, input_shape=input_shape,  padding="causal"))
+    model.add(MaxPooling1D(pool_size=(2)))
+
+    rate = rate #+ rate_exp_add * 2
+    model.add(Conv1D(filters=64, kernel_size=(16), activation='relu', dilation_rate = 2**rate,padding="causal"))
+    model.add(MaxPooling1D(pool_size=(2)))
+
+    rate = rate #+ rate_exp_add * 2
+    model.add(Conv1D(filters=32, kernel_size=(16), activation='relu', dilation_rate = 2**rate, padding="causal"))
+    model.add(MaxPooling1D(pool_size=(2)))
+    model.add(Dropout(dropout))
+
+    
+    model.add(Conv1D(filters=32, kernel_size=(16), activation='relu', dilation_rate = 2**rate, padding="causal"))
+    model.add(MaxPooling1D(pool_size=(2)))
+    model.add(Dropout(dropout))
+
+    
+    model.add(Conv1D(filters=8, kernel_size=(4), activation='relu', dilation_rate = 2**rate, padding="causal"))
+    model.add(MaxPooling1D(pool_size=(2)))
+    model.add(Dropout(dropout))
+
+    model.add(Conv1D(filters=8, kernel_size=(4), activation='relu', dilation_rate = 2**rate, padding="causal"))
+    model.add(MaxPooling1D(pool_size=(2)))
+    model.add(Dropout(dropout))
+    
+    model.add(Conv1D(filters=8, kernel_size=(4), activation='relu', dilation_rate = 2**rate, padding="causal"))
+    model.add(MaxPooling1D(pool_size=(2)))
+    model.add(Dropout(dropout))
+    
+    model.add(Conv1D(filters=8, kernel_size=(4), activation='relu', dilation_rate = 2**rate, padding="causal"))
+    model.add(MaxPooling1D(pool_size=(2)))
+    model.add(Dropout(dropout))
+    
+    model.add(Conv1D(filters=8, kernel_size=(4), activation='relu', dilation_rate = 2**rate, padding="causal"))
+    model.add(MaxPooling1D(pool_size=(2)))
+    model.add(Dropout(dropout))
+    
+    model.add(Conv1D(filters=8, kernel_size=(4), activation='relu', dilation_rate = 2**rate, padding="causal"))
+    model.add(MaxPooling1D(pool_size=(2)))
+    model.add(Dropout(dropout))
+
+    
+    model.add(Flatten())
+    model.add(Dense(50, activation='softmax'))
+    model.add(Dense(1))
+	
+    model.compile(loss='binary_crossentropy', optimizer=optimizer, metrics = ['accuracy'])
+    #print(model.summary())
+    return model
+
+
+# Build Model
+
+def evaluate_model(X_train, Y_train, X_test, Y_test):
+    model = build_model()
+    #score = model.evaluate(X_train, Y_train, batch_size=batch_size)
+    history = model.fit(X_train, Y_train, epochs=training_epochs, verbose=verbose, batch_size=batch_size, validation_split=0.2)
+    #plt.plot(history.history['accuracy'])
+    #plt.show()
+    _, accuracy = model.evaluate(X_test, Y_test, batch_size=batch_size)
+    #prediction = model.predict(X_test, verbose=1)
+    #sns.displot(prediction)
+    return accuracy, history.history['accuracy'][-1]
+    
+  
+# repeat experiment
+scores = list()
+training_scores = list()
+repeats = 100
+for r in range(repeats):
+    score, hx = evaluate_model(X_train, Y_train, X_test, Y_test)
+    score = score * 100.0
+    hx = hx * 100
+    print('>#%d: %.3f' % (r+1, hx))
+    print('>#%d: %.3f' % (r+1, score))
+    training_scores.append(hx)
+    scores.append(score)
+    sns.displot(training_scores)
+    plt.show()
+    sns.displot(scores)
+    plt.show()
+    tf.keras.backend.clear_session()    
+
+sns.scatterplot(x = training_scores, y=scores)
+
+# summarize scores
+def summarize_results(scores):
+	print(scores)
+	m, s = np.mean(scores), np.std(scores)
+	print('Accuracy: %.3f%% (+/-%.3f)' % (m, s))
+#%%
+#Determine which patients are train and test
+
+#unique_IDs = np.unique(data_spread["RID"])
+#train = train_test_split
+
+
+#len(np.where(Y_train[:,0] == 1)[0])/len(Y_train)
+#%%
+
+
+
+
+
+
+#%%
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -20,6 +20,18 @@ import time
 import gc
 import io
 
+
+path = "/home/arevell/papers/paper002" 
+import sys
+from os.path import join as ospj
+sys.path.append(ospj(path, "seizure_spread/tools"))
+sys.path.append(ospj(path, "seizure_spread/tools/ieegpy"))
+from ieeg.auth import Session
+
+
+
+from download_iEEG_data import get_iEEG_data
+
 # convert inputs and outputs
 def overlapping_windows(train_x, output_length):
 	# flatten data
@@ -39,7 +51,7 @@ def overlapping_windows(train_x, output_length):
 
 
 def iEEG_data_get(file_ID, start, duration):
-	s = ieeg.auth.Session('arevell', 'Zoro11!!')
+	s = ieeg.auth.Session('arevell', '')
 	ds = s.open_dataset(file_ID)
 	channels = list(range(len(ds.ch_labels)))
 	data = ds.get_data(start,duration, channels)
