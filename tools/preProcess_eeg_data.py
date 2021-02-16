@@ -1,6 +1,7 @@
 """
-2020.06.10
+2020.09.15
 Andy Revell
+Python 3.8.5
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Purpose:
 
@@ -31,8 +32,8 @@ import copy
 #%%
 def common_avg_reference(ifname, ofname):
     """
-    ifname = '/home/arevell/papers/paper002/data/raw/eeg/sub-RID0278/sub-RID0278_HUP138_phaseII_226925740000_227105740000_EEG.pickle'
-    ofname = '/home/arevell/papers/paper002/data/processed/eeg_common_avg_reference/sub-RID0278/sub-RID0278_HUP138_phaseII_226925740000_227105740000_EEG_avgRef.pickle'
+    ifname = '/media/arevell/sharedSSD/linux/papers/paper002/data/raw/eeg/sub-RID0278/sub-RID0278_HUP138_phaseII_226925740000_227105740000_EEG.pickle'
+    ofname = '/media/arevell/sharedSSD/linux/papers/paper002/data/processed/eeg_common_avg_reference/sub-RID0278/sub-RID0278_HUP138_phaseII_226925740000_227105740000_EEG_avgRef.pickle'
 
     """
     print("opening {0} ".format(ifname))
@@ -60,8 +61,8 @@ def common_avg_reference(ifname, ofname):
 
 def filter_eeg_data(ifname, ofname):
     """
-    ifname = '/home/arevell/papers/paper002/data/processed/eeg_common_avg_reference/sub-RID0278/sub-RID0278_HUP138_phaseII_226925740000_227105740000_EEG_avgRef.pickle'
-    ofname = '/home/arevell/papers/paper002/data/processed/eeg_filtered/sub-RID0278/sub-RID0278_HUP138_phaseII_226925740000_227105740000_EEG_filtered.pickle'
+    ifname = '/media/arevell/sharedSSD/linux/papers/paper002/data/processed/eeg_common_avg_reference/sub-RID0278/sub-RID0278_HUP138_phaseII_226925740000_227105740000_EEG_avgRef.pickle'
+    ofname = '/media/arevell/sharedSSD/linux/papers/paper002/data/processed/eeg_filtered/sub-RID0278/sub-RID0278_HUP138_phaseII_226925740000_227105740000_EEG_filtered.pickle'
     
     """
     print("opening {0} ".format(ifname))
@@ -105,16 +106,17 @@ def filter_eeg_data(ifname, ofname):
 
 def downsample_EEG(ifname, ofname, down_sample_factor):
     """
-    ifname = '/home/arevell/papers/paper002/data/processed/eeg_filtered/sub-RID0278/sub-RID0278_HUP138_phaseII_226925740000_227105740000_EEG_filtered.pickle'
-    ofname = '/home/arevell/papers/paper002/data/processed/eeg_downsampled/sub-RID0278/sub-RID0278_HUP138_phaseII_226925740000_227105740000_EEG.pickle'
-
+    ifname = '/media/arevell/sharedSSD/linux/papers/paper002/data/processed/eeg_filtered/sub-RID0278/sub-RID0278_HUP138_phaseII_226925740000_227105740000_EEG_avgRef_filtered.pickle'
+    ofname = '/media/arevell/sharedSSD/linux/papers/paper002/data/processed/eeg_downsampled/sub-RID0278/sub-RID0278_HUP138_phaseII_226925740000_227105740000_EEG_avgRef_filtered_downsampled.pickle'
+    down_sample_factor = 128
     """
     print("opening {0} ".format(ifname))
     with open(ifname, 'rb') as f: data, fs = pickle.load(f)
-    down_sample_factor = down_sample_factor
+    print(fs)
+    down_sample_factor = int(fs/down_sample_factor) #downsample to specified frequency
     data_downsampled = signal.decimate(data, down_sample_factor, axis=0)#downsample data
     index = np.array(data.index)
-    index = index[0::10]
+    index = index[0::down_sample_factor]
     df_downsampled = pd.DataFrame(data_downsampled, columns = data.columns, index = index)
     # save file
     print("Saving file to {0}\n\n".format(ofname))

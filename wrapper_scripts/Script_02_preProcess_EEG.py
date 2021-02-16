@@ -24,7 +24,7 @@ Example:
 
 
 #%%
-path = "/home/arevell/papers/paper002" 
+path = "/media/arevell/sharedSSD/linux/papers/paper002" 
 import sys
 import os
 from os.path import join as ospj
@@ -77,7 +77,7 @@ for i in range(len(data)):
         print("filtering")
         preProcess_eeg_data.filter_eeg_data(ofname_avgRef, ofname_filtered)
         print("Downsampling")
-        preProcess_eeg_data.downsample_EEG(ofname_filtered, ofname_downsampled, 10)
+        preProcess_eeg_data.downsample_EEG(ofname_filtered, ofname_downsampled, 128)
 
 
     

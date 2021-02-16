@@ -47,7 +47,7 @@ Example:
 
 
 #%%
-path = "/home/arevell/papers/paper002" 
+path = "/media/arevell/sharedSSD/linux/papers/paper002" 
 import sys
 import os
 from os.path import join as ospj

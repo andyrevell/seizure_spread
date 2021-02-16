@@ -1,0 +1,15 @@
+README.md
+setup.py
+ieeg/__init__.py
+ieeg/annotation_processing.py
+ieeg/auth.py
+ieeg/dataset.py
+ieeg/ieeg_api.py
+ieeg/ieeg_auth.py
+ieeg/mprov_listener.py
+ieeg/processing.py
+ieeg.egg-info/PKG-INFO
+ieeg.egg-info/SOURCES.txt
+ieeg.egg-info/dependency_links.txt
+ieeg.egg-info/requires.txt
+ieeg.egg-info/top_level.txt
