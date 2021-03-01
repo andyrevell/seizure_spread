@@ -102,7 +102,9 @@ train, test = echomodel.splitDataframeTrainTest(patientsWithAnnotations, "subjec
 i=0
 RID = list(jsonFile["SUBJECTS"].keys() )[i]
 fname_iEEG =  jsonFile["SUBJECTS"][RID]["Events"]["Ictal"]["1"]["FILE"]
-annotations, annotationsSeizure = downloadiEEG.get_natus(username, password, fname_iEEG = fname_iEEG, annotationLayerName = "Imported Natus ENT annotations")
+
+fname_iEEG = "HUP204_phaseII"
+annotations, annotationsSeizure, annotationsUEOEEC = downloadiEEG.get_natus(username, password, fname_iEEG = fname_iEEG, annotationLayerName = "Imported Natus ENT annotations")
 
 #%% Get data
 

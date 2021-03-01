@@ -154,6 +154,7 @@ def get_natus(username, password, fname_iEEG = "HUP172_phaseII", annotationLayer
         
     annotations = pd.DataFrame(columns=(["file", "annotationLayer", "description", "start", "stop"]))
     annotationsSeizure = pd.DataFrame(columns=(["file", "annotationLayer", "description", "start", "stop"]))
+    annotationsUEOEEC = pd.DataFrame(columns=(["file", "annotationLayer", "description", "start", "stop"]))
     
     for j in range(len(annotationsLayer)):
             start = annotationsLayer[j].start_time_offset_usec
@@ -162,10 +163,13 @@ def get_natus(username, password, fname_iEEG = "HUP172_phaseII", annotationLayer
             
             annotations = annotations.append({'file': fname_iEEG, "annotationLayer":annotationLayerName,  'description':description, 'start':start, 'stop':stop}, ignore_index=True)
             
-            if any(["seizure" in description.lower(),  "szr" in description.lower() ]) :
+            if any(["seizure" in description.lower(),  "sz" in description.lower() ]) :
                 annotationsSeizure = annotationsSeizure.append({'file': fname_iEEG, "annotationLayer":annotationLayerName,  'description':description, 'start':start, 'stop':stop}, ignore_index=True)
                 
-    return annotations, annotationsSeizure
+            if any(["ueo" in description.lower(),  "eec" in description.lower() ]) :
+                annotationsUEOEEC = annotationsUEOEEC.append({'file': fname_iEEG, "annotationLayer":annotationLayerName,  'description':description, 'start':start, 'stop':stop}, ignore_index=True)
+                
+    return annotations, annotationsSeizure, annotationsUEOEEC
 
     
     
