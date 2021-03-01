@@ -47,6 +47,8 @@ from scipy.stats import pearsonr, spearmanr
 # from sklearn.metrics import mutual_info_score, normalized_mutual_info_score
 from sklearn.feature_selection import mutual_info_regression
 import time
+import math
+import copy
 import pandas as pd
 from scipy.spatial import distance_matrix
 
@@ -79,7 +81,7 @@ A. Main
 # Parameter set
 # Bands
 param_band = {}
-param_band['Broadband'] = [1., 255.]
+param_band['Broadband'] = [1., 128.]
 param_band['delta'] = [1., 4.]
 param_band['theta'] = [4., 8.]
 param_band['alpha'] = [8., 13.]
@@ -759,30 +761,32 @@ def common_avg_ref(data):
     data_reref = (data.T - data.mean(axis=1)).T
     return data_reref
 
-def automatic_bipolar_ref(data, data_col):
-    """
-    The automatic_bipolar_ref function calculates the bipolar montaged signal.
-    Parameters
-    ----------
-        data: ndarray, shape (T, N)
-            Input signal with T samples over N variates
-        data_col: column names of the data Pandas frame (list of electrode names)
-    Returns
-    -------
-        data_reref: ndarray, shape (T, N)
-            Bipolar referenced signal
-    """
-    # Standard param checks
-    check_type(data, np.ndarray)
-    check_dims(data, 2)
-    # bipolar/tripolar montaging
-    data_bp = pd.DataFrame()
-    for i in range(1, data.shape[1] - 1):
-        input_1 = data[:, i]
-        input_2 = data[:, getNextCol(data_col, data_col[i])]
-        data_bp[data_col[i]] = input_1 - input_2
-    data_reref = np.array(data_bp)
-    return data_reref
+def automaticBipolarMontageSEEG(data, data_columns):
+    channels = np.array(data_columns)
+    
+  
+
+    
+    nchan = len(channels)
+    #naming to standard 4 character channel Name: (Letter)(Letter)(Number)(Number)
+    channels = channel2std(channels)
+    count = 0
+    for ch in range(nchan-1):
+        ch1Ind = ch
+        ch1 = channels[ch1Ind]    
+        #find sequential index
+        ch2 = ch1[0:2] + f"{(int(ch1[2:4]) + 1):02d}"
+        
+        ch2exists = np.where(channels == ch2)[0]
+        if len(ch2exists) > 0:
+            ch2Ind = ch2exists[0]
+            bipolar = pd.Series((data[:,ch1Ind] - data[:,ch2Ind])).rename(ch1)
+            if count == 0: #initialize
+                dfBipolar = pd.DataFrame( bipolar)
+                count = count + 1
+            else:
+                dfBipolar = pd.concat([dfBipolar, pd.DataFrame( bipolar)], axis=1)
+    return np.array(dfBipolar), np.array(dfBipolar.columns)
 
 def manual_bipolar_ref(data, data_col, csvcols):
     """
@@ -992,11 +996,66 @@ def butterworth_filt(data, fs):
 
     return notched
 
+def preprocess(df, fs, fsds, montage = "bipolar", prewhiten = True):
+    data = np.array(df)
+    data_columns = np.array(df.columns)
+    if montage == "car":
+        data_ref = common_avg_ref(data) 
+        channels = data_columns
+        channels = channel2std(channels)
+    if montage == "bipolar":
+        data_ref, channels = automaticBipolarMontageSEEG(data, data_columns)
+    if prewhiten == True: data_ar = ar_one(data_ref)    
+    else: data_ar = data_ref   
+    data_filt = elliptic_bandFilter(data_ar, int(fs))[0]
+    return data, data_ref, data_ar, data_filt, channels
+
+#%%
+
+
+def distanceBetweenPoints(p1, p2):
+    return math.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)
+
+
+def lineLength(vector):
+    l = len(vector)
+    length = np.zeros(shape = l)
+    x = np.array(range(l))
+    for v in range(l-1):
+        length[v] = distanceBetweenPoints( (x[v], vector[v]) , (x[v+1], vector[v+1])  )
+    lineLen = np.sum(length)
+    return lineLen
+
+def lineLengthOfArray(data):
+    windows, nsamp, nchan = data.shape
+    lineLength_arr = np.zeros(shape = (windows, nchan))  
+    for c in range(nchan):
+        print(c)
+        for win in range(windows):
+            lineLength_arr[win, c] = lineLength(data[win, :, c])
+            
+    lineLengthNorm = copy.deepcopy(lineLength_arr)
+    for c in range(nchan):
+        lineLengthNorm[:,c] = lineLength_arr[:,c]/np.max(lineLength_arr[:,c])
+    return lineLength_arr, lineLengthNorm
 
 # %%
 """
 C. Utilities:
 """
+
+
+
+def channel2std(channelsArr):
+    nchan = len(channelsArr)
+    for ch in range(nchan):
+        if len(channelsArr[ch]) < 4:
+            channelsArr[ch] = channelsArr[ch][0:2] + f"{int(channelsArr[ch][2:]):02d}"
+    return channelsArr
+
+
+
+
 def getNextCol(datacols, currcol):
     """
     This getNextCol function is a helper function for the automatic bipolar montaging. It sorts the column list
@@ -1145,16 +1204,22 @@ def printProgressBar(iteration, total, prefix='', suffix='', decimals=1, length=
     # Print New Line on Complete
     if iteration == total:
         print()
+        
+def movingaverage(x, window_size):
+        window = np.ones(int(window_size))/float(window_size)
+        return np.convolve(x, window, 'valid')
 
 
-def show_eeg_compare(data, data_hat, fs, channel=0, start_sec=0, stop_sec=2):
+def show_eeg_compare(data, data_hat, fs, channel=0, start_sec=0, stop_sec=None):
+    if stop_sec == None:
+        stop_sec = data.shape[0]/fs
     data_ch = data[:, channel]
     data_ch_hat = data_hat[:, channel]
     fig, axes = plt.subplots(1, 2, figsize=(8, 4), dpi=300)
-    sns.lineplot(x=np.array(range(fs * start_sec, fs * stop_sec)) / 1e6 * fs,
-                 y=data_ch[range(fs * start_sec, fs * stop_sec)], ax=axes[0], linewidth=0.5)
-    sns.lineplot(x=np.array(range(fs * start_sec, fs * stop_sec)) / 1e6 * fs,
-                 y=data_ch_hat[range(fs * start_sec, fs * stop_sec)], ax=axes[1], linewidth=0.5)
+    sns.lineplot(x=np.array(range(fs * start_sec, int(fs * stop_sec))) / fs,
+                 y=data_ch[range(fs * start_sec, int(fs * stop_sec))], ax=axes[0], linewidth=0.5)
+    sns.lineplot(x=np.array(range(fs * start_sec, int(fs * stop_sec))) / fs,
+                 y=data_ch_hat[range(fs * start_sec, int(fs * stop_sec))], ax=axes[1], linewidth=0.5)
     plt.show()
 
 

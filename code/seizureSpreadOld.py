@@ -78,7 +78,7 @@ data_spread = pd.read_excel(ifname_spread)
 unique_IDs = np.unique(data_spread["RID"])
 #%%
 
-filepath = ospj(path,"data/processed/model_checkpoints/wavenet/v012.hdf5") #version 7 of wavenet is good
+filepath = ospj(path,"data/processed/model_checkpoints/wavenet/v032.hdf5") #version 7 of wavenet is good
 model = load_model(filepath)
 print(model.summary())
 
@@ -175,10 +175,10 @@ plot_ch(data_norm, channel=0, start=0, stop=nsamp)
 #%%
 skip = 32
 mul = int(32/skip)
-data_win = overlapping_windows(data_norm, 1280, skip)   
+data_win = overlapping_windows(data_norm, 2560, skip)   
 windows, window_len, _ = data_win.shape
     
-ch_pred =     data_win[:,:,42].reshape(windows, window_len, 1    )
+ch_pred =     data_win[:,:,0].reshape(windows, window_len, 1    )
 
     
 Y_predict_probability =  model.predict(ch_pred, verbose=1)
@@ -198,11 +198,11 @@ for c in range(nchan):
     
     probability_arr[:,c] =  model.predict(ch_pred, verbose=1)[:,1]
         
-#sns.heatmap( probability_arr[:,:].T )    
-sns.heatmap( probability_arr[1400*mul:1800*mul,:].T )    
     
 #%%
-
+#sns.heatmap( probability_arr[:,:].T )    
+sns.heatmap( probability_arr[1400*mul:1800*mul,:].T )    
+#%%
 
 THRESHOLD = 0.5
     
@@ -453,6 +453,39 @@ plot_eeg_with_start_markers(data_to_plot, start_markers_threshold_involve, start
 time_to_threshold_involve = (t_threshold_involve_loc - spread_start_loc[channel_order][0])/128
 
 print(time_to_threshold_involve)
+
+
+#%%
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

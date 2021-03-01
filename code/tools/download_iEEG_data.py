@@ -75,7 +75,12 @@ def get_iEEG_data(username, password, fname_iEEG, startUsec, stopUsec, ignoreEle
     #concatenates the data
     server_limit_minutes = 10
     if duration < server_limit_minutes*60*1e6:
-        data = ds.get_data(startUsec, duration, channels_ind)
+        for c in range(len(channels_ind)):
+            if c == 0: #initialize
+                data = ds.get_data(startUsec, duration,[ channels_ind[c]])
+            else:
+                data = np.concatenate([data, ds.get_data(startUsec, duration, [channels_ind[c]])], axis=1)
+        #data = ds.get_data(startUsec, duration, channels_ind)
     if duration >= server_limit_minutes*60*1e6:
         break_times = np.ceil(np.linspace(startUsec, stopUsec, num=int(np.ceil(duration/(server_limit_minutes*60*1e6))+1), endpoint=True))
         break_data = np.zeros(shape = (int(np.ceil(duration/1e6*fs)), len(channels_ind)))#initialize
@@ -125,14 +130,46 @@ def get_iEEG_annotations(username, password, fname_iEEG, annotationLayerName):
 
 
 
+def get_fs(username, password, fname_iEEG):
+    print("\nGetting sampling frequency from iEEG.org:")
+    print(f"fname_iEEG: {fname_iEEG}")
+    s = Session(username, password)
+    ds = s.open_dataset(fname_iEEG)
+    fs = ds.get_time_series_details(ds.ch_labels[0]).sample_rate #get sample rate
+    return fs
 
 
 
+def get_natus(username, password, fname_iEEG = "HUP172_phaseII", annotationLayerName = "Imported Natus ENT annotations"):
+    print("\nFinding seizures")
+    print(f"fname_iEEG: {fname_iEEG}")
+    
+    s = Session(username, password)
+    ds = s.open_dataset(fname_iEEG)
+   
+    annotation_layers = np.array(list(ds.get_annotation_layers()))
+    if not any(annotationLayerName == annotation_layers): #if there are no annotation layer names matchingt the user input, then list the layer names
+        raise Exception(f"\n{annotationLayerName} does not match any layer names.\n\nThe existing annotation layer names are:\n\n{annotation_layers}")
+    annotationsLayer = ds.get_annotations(annotationLayerName)
+        
+    annotations = pd.DataFrame(columns=(["file", "annotationLayer", "description", "start", "stop"]))
+    annotationsSeizure = pd.DataFrame(columns=(["file", "annotationLayer", "description", "start", "stop"]))
+    
+    for j in range(len(annotationsLayer)):
+            start = annotationsLayer[j].start_time_offset_usec
+            stop = annotationsLayer[j].end_time_offset_usec
+            description = annotationsLayer[j].description
+            
+            annotations = annotations.append({'file': fname_iEEG, "annotationLayer":annotationLayerName,  'description':description, 'start':start, 'stop':stop}, ignore_index=True)
+            
+            if any(["seizure" in description.lower(),  "szr" in description.lower() ]) :
+                annotationsSeizure = annotationsSeizure.append({'file': fname_iEEG, "annotationLayer":annotationLayerName,  'description':description, 'start':start, 'stop':stop}, ignore_index=True)
+                
+    return annotations, annotationsSeizure
 
-
-
-
-
+    
+    
+    
 
 
 
